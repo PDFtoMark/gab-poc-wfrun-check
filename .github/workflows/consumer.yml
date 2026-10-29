@@ -1,0 +1,31 @@
+name: consumer
+on:
+  workflow_run:
+    workflows: [producer]
+    types: [completed]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe run ids and artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          echo "workflow_run.id=${{ github.event.workflow_run.id }}"
+          echo "workflow_run.event=${{ github.event.workflow_run.event }}"
+          echo "workflow_run.actor=${{ github.event.workflow_run.actor.login }}"
+          echo "--- artifacts of CURRENT run ---"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.total_count'
+          echo "--- artifacts of TRIGGERING run ---"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/${{ github.event.workflow_run.id }}/artifacts" --jq '.total_count, (.artifacts[].name)'
+      - name: Emulate oblt test-report artifact gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MATCHED=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" | jq -r --arg p 'test-results(.*)' '.artifacts[] | select(.name | test($p)) | .name')
+          echo "MATCHED=[$MATCHED]"
+          if [[ -n "$MATCHED" ]]; then echo "found=true"; else echo "found=false"; fi
